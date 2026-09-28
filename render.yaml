@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: quicknosh-jetarm-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: JETSON_CLIENT_ID
+        value: jetarm_quicknosh_client
+      - key: JETSON_CLIENT_SECRET
+        value: jetarm_quicknosh_2026
