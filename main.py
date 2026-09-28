@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 QuickNosh Express — Cloud-Hosted Salesforce & JetArm Fulfillment API
-Configured for Cloud Hosting (Render, Railway, Fly.io, AWS, Heroku)
-Listens on dynamic cloud port: os.environ.get("PORT", 8080)
+Features:
+1. Beautiful Enterprise Web Dashboard on GET /
+2. POST /oauth/token (OAuth 2.0 Bearer Generation)
+3. POST /api/pick (Enterprise Order Pick Dispatch)
+4. Outbound Salesforce Callback (/RoboticStatusCallback)
 """
 
 import os
@@ -35,7 +38,285 @@ SALESFORCE_CLIENT_SECRET = os.environ.get("SALESFORCE_CLIENT_SECRET", "YOUR_SALE
 active_tokens = {}
 
 # ==============================================================================
-# 2. OAUTH 2.0 TOKEN HANDLER
+# 2. BEAUTIFUL ENTERPRISE HTML DASHBOARD (GET /)
+# ==============================================================================
+HTML_DASHBOARD = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickNosh Express — JetArm Robotic Fulfillment API</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.2);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      max-width: 900px;
+      width: 100%;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 35px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: var(--green-glow);
+      border: 1px solid var(--green);
+      color: #34d399;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background-color: #34d399;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #34d399;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+    }
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #93c5fd 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .method-tag {
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .post-tag { background: #1e3a8a; color: #60a5fa; border: 1px solid #3b82f6; }
+    .code-block {
+      background: #06090f;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #e5e7eb;
+      overflow-x: auto;
+      margin-top: 10px;
+    }
+    .field-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #1f2937;
+      font-size: 0.9rem;
+    }
+    .field-row:last-child { border-bottom: none; }
+    .field-name { color: var(--text-muted); }
+    .field-value { font-family: 'JetBrains Mono', monospace; color: #60a5fa; font-weight: 500; }
+    .arch-banner {
+      background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(17, 24, 39, 0.8) 100%);
+      border: 1px solid #1e40af;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+    .arch-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+    }
+    .arch-node {
+      background: #0f172a;
+      border: 1px solid #334155;
+      padding: 8px 14px;
+      border-radius: 8px;
+      color: #93c5fd;
+    }
+    .arch-arrow { color: #64748b; font-weight: 700; }
+    footer {
+      text-align: center;
+      color: #6b7280;
+      font-size: 0.85rem;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">
+        <span class="pulse-dot"></span>
+        <span>SYSTEM OPERATIONAL &middot; 24/7 CLOUD HOSTED</span>
+      </div>
+      <h1>QuickNosh Express Fulfillment API</h1>
+      <p class="subtitle">Autonomous 6-DOF JetArm Robotic Integration for Salesforce D2C Commerce</p>
+    </div>
+
+    <div class="arch-banner">
+      <div style="font-weight: 600; color: #cbd5e1; font-size: 0.95rem;">PRODUCTION INTEGRATION PIPELINE</div>
+      <div class="arch-flow">
+        <div class="arch-node">Shopper Mobile Scan</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">Salesforce Cloud</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node" style="border-color: #3b82f6; color: #60a5fa;">Cloud API Gateway</div>
+        <div class="arch-arrow">&rarr;</div>
+        <div class="arch-node">In-Store JetArm Robot</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Token Endpoint Card -->
+      <div class="card">
+        <div class="card-title">
+          <span class="method-tag post-tag">POST</span>
+          <span>/oauth/token</span>
+        </div>
+        <p style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 12px;">
+          Issues 1-hour OAuth 2.0 Bearer access tokens for Salesforce Named Credentials.
+        </p>
+        <div class="field-row">
+          <span class="field-name">Client ID</span>
+          <span class="field-value">jetarm_quicknosh_client</span>
+        </div>
+        <div class="field-row">
+          <span class="field-name">Client Secret</span>
+          <span class="field-value">jetarm_quicknosh_2026</span>
+        </div>
+        <div class="field-row">
+          <span class="field-name">Grant Type</span>
+          <span class="field-value">client_credentials</span>
+        </div>
+        <div class="code-block">
+POST /oauth/token HTTP/1.1<br>
+Content-Type: application/json<br><br>
+{"grant_type": "client_credentials", ...}
+        </div>
+      </div>
+
+      <!-- Pick API Card -->
+      <div class="card">
+        <div class="card-title">
+          <span class="method-tag post-tag">POST</span>
+          <span>/api/pick</span>
+        </div>
+        <p style="font-size: 0.85rem; color: #9ca3af; margin-bottom: 12px;">
+          Dispatches multi-item order pick requests with dynamic mechanical SLA estimation (~11.5s/item).
+        </p>
+        <div class="field-row">
+          <span class="field-name">Authorization</span>
+          <span class="field-value">Bearer &lt;token&gt;</span>
+        </div>
+        <div class="field-row">
+          <span class="field-name">Status Response</span>
+          <span class="field-value">200 ACCEPTED</span>
+        </div>
+        <div class="field-row">
+          <span class="field-name">Callback Target</span>
+          <span class="field-value" style="font-size: 0.75rem;">infycommerceorg/...</span>
+        </div>
+        <div class="code-block">
+POST /api/pick HTTP/1.1<br>
+Authorization: Bearer jarm_token_...<br><br>
+{"cartId": "0a6xx...", "cartItems": [...]}
+        </div>
+      </div>
+    </div>
+
+    <!-- System Status Summary -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom: 16px;">
+        <span>Connected Cloud Environments</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">Salesforce Storefront</span>
+        <span class="field-value"><a href="https://infycommerceorg.my.site.com/QuickNoshExpress/" target="_blank" style="color: #60a5fa; text-decoration: none;">infycommerceorg.my.site.com/QuickNoshExpress/ &nearr;</a></span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">Salesforce Instance</span>
+        <span class="field-value">https://infycommerceorg.my.salesforce.com</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">Apex Callback Endpoint</span>
+        <span class="field-value">/services/apexrest/RoboticStatusCallback</span>
+      </div>
+      <div class="field-row">
+        <span class="field-name">Kinematics Trajectory Time</span>
+        <span class="field-value">~11.5s per SKU (+12cm High-Lift)</span>
+      </div>
+    </div>
+
+    <footer>
+      QuickNosh Express Autonomous Retail System &middot; Production API Gateway v2.0
+    </footer>
+  </div>
+</body>
+</html>
+"""
+
+# ==============================================================================
+# 3. OAUTH 2.0 TOKEN HANDLER
 # ==============================================================================
 def generate_bearer_token():
     return "jarm_token_" + secrets.token_hex(24)
@@ -49,7 +330,7 @@ def validate_bearer_token(auth_header):
     return False
 
 # ==============================================================================
-# 3. SALESFORCE APEX REST CALLBACK CLIENT
+# 4. SALESFORCE APEX REST CALLBACK CLIENT
 # ==============================================================================
 def send_packed_callback_to_salesforce(cart_id, packing_request_id, idempotency_key, external_ref, bin_number, packed_items):
     logger.info(f"[SALESFORCE CALLBACK] Sending PackedNotification for RequestID: {packing_request_id} to {SALESFORCE_REST_CALLBACK}")
@@ -89,7 +370,7 @@ def send_packed_callback_to_salesforce(cart_id, packing_request_id, idempotency_
         logger.error(f"[CALLBACK ERROR] Could not reach Salesforce endpoint: {e}")
 
 # ==============================================================================
-# 4. PICK EXECUTION WORKER
+# 5. PICK EXECUTION WORKER
 # ==============================================================================
 def execute_fulfillment_job(job_data):
     cart_id            = job_data['cartId']
@@ -130,26 +411,34 @@ def execute_fulfillment_job(job_data):
     )
 
 # ==============================================================================
-# 5. REST API SERVER (CLOUD HTTP HANDLER)
+# 6. REST API SERVER (CLOUD HTTP HANDLER)
 # ==============================================================================
 class CloudIntegrationHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args): pass
 
     def do_GET(self):
-        # Health Check endpoint for cloud load balancers
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        health_resp = {
-            "service": "QuickNosh JetArm Robotic Fulfillment Cloud API",
-            "status": "ONLINE",
-            "target_salesforce": SALESFORCE_INSTANCE_URL,
-            "endpoints": {
-                "token": "POST /oauth/token",
-                "pick": "POST /api/pick"
+        # Check if caller wants JSON healthcheck (e.g., Postman / automated monitor)
+        accept_header = self.headers.get('Accept', '')
+        if 'application/json' in accept_header:
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            health_resp = {
+                "service": "QuickNosh JetArm Robotic Fulfillment Cloud API",
+                "status": "ONLINE",
+                "target_salesforce": SALESFORCE_INSTANCE_URL,
+                "endpoints": {
+                    "token": "POST /oauth/token",
+                    "pick": "POST /api/pick"
+                }
             }
-        }
-        self.wfile.write(json.dumps(health_resp, indent=2).encode('utf-8'))
+            self.wfile.write(json.dumps(health_resp, indent=2).encode('utf-8'))
+        else:
+            # Deliver gorgeous Enterprise Web Dashboard to browsers
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(HTML_DASHBOARD.encode('utf-8'))
 
     def do_POST(self):
         content_len = int(self.headers.get('Content-Length', 0))
